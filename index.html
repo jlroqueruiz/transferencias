@@ -699,6 +699,40 @@ function computeFilteredRows() {
   return rows;
 }
 
+function computeLocalesOrigenData(rows) {
+  const gO = {};
+  for (const r of rows) {
+    const k = r.COD_POSU_ORIGEN ?? '?';
+    if (!gO[k]) gO[k] = { cod:k, nombre:r.DE_LOCAL_ORIGEN, marca:r.MARCA_ORIGEN, depto:r.DEPARTAMENTO_ORIGEN, cantidad:0, costo_total:0 };
+    gO[k].cantidad++;
+    gO[k].costo_total += r.COSTO_TOTAL ?? 0;
+  }
+  return Object.values(gO).sort((a,b) => b.cantidad - a.cantidad);
+}
+
+function computeLocalesDestinoData(rows) {
+  const gDt = {};
+  for (const r of rows) {
+    const k = r.COD_POSU_DESTINO ?? '?';
+    if (!gDt[k]) gDt[k] = { cod:k, nombre:r.DE_LOCAL_DESTINO, marca:r.MARCA_DESTINO ?? r.MARCA_ORIGEN, depto:r.DEPARTAMENTO_DESTINO ?? '', cantidad:0, costo_total:0 };
+    gDt[k].cantidad++;
+    gDt[k].costo_total += r.COSTO_TOTAL ?? 0;
+  }
+  return Object.values(gDt).sort((a,b) => b.cantidad - a.cantidad);
+}
+
+function computeProductosData(rows) {
+  const gP = {};
+  for (const r of rows) {
+    const k = r.CODSAPPROD ?? '?';
+    if (!gP[k]) gP[k] = { cod:k, nombre:r.DE_PRODUCTO, jq1:r.JQ1, estado:r.ESTADO_PRODUCTO, cantidad:0, costo_total:0, _locSet:new Set() };
+    gP[k].cantidad += r.CA_ENVIADA_ENTERA ?? 0;
+    gP[k].costo_total += r.COSTO_TOTAL ?? 0;
+    gP[k]._locSet.add(r.COD_POSU_DESTINO);
+  }
+  return Object.values(gP).map(p => ({ ...p, locales_solicitantes: p._locSet.size }));
+}
+
 function computeRegionData(rows) {
   const grp = {
     'PROVINCIA':   { region: 'PROVINCIA',   cantidad: 0, costo_total: 0, inka: 0, mif: 0, mia: 0 },
@@ -789,6 +823,7 @@ function setJefeVentasFiltro(v) {
 function applyGlobalFilters() {
   renderKpiCards();
   updateChartsForMarca();
+  renderTablas();
   if (typeof renderDetalle === 'function') renderDetalle();
   if (typeof renderAuditores === 'function') renderAuditores();
 }
@@ -1326,8 +1361,12 @@ function sortArr(arr, s) {
 function renderTablas() {
   const d = window._data; if (!d) return;
 
-  const locFilt  = currentMarca === 'todos' ? d.top_locales_origen  : d.top_locales_origen.filter(l => l.marca === currentMarca);
-  const destFilt = currentMarca === 'todos' ? d.top_locales_destino : d.top_locales_destino.filter(l => l.marca === currentMarca);
+  const rowsForTablas = window._rawRows ? computeFilteredRows() : null;
+  const origenBase  = rowsForTablas ? computeLocalesOrigenData(rowsForTablas)  : d.top_locales_origen;
+  const destinoBase = rowsForTablas ? computeLocalesDestinoData(rowsForTablas) : d.top_locales_destino;
+
+  const locFilt  = currentMarca === 'todos' ? origenBase  : origenBase.filter(l => l.marca === currentMarca);
+  const destFilt = currentMarca === 'todos' ? destinoBase : destinoBase.filter(l => l.marca === currentMarca);
 
   const rowLocal = (tipo) => (l, i) => `<tr style="background:${i%2===0?'transparent':'rgba(0,0,0,.02)'}">
     <td class="tdl" style="color:var(--tx-d);font-size:10px">${l.cod}</td>
@@ -1342,26 +1381,13 @@ function renderTablas() {
   document.getElementById('tbody-destino').innerHTML = sortArr(destFilt, _sortDestino).map(rowLocal('destino')).join('');
 
   let productos;
-  if (_prodAntiFiltro === 'todos' || !window._rawRows) {
-    if (window._rawRows) {
-      const _prodLocSets = {};
-      window._rawRows.forEach(r => {
-        const k = r.CODSAPPROD; if (!k) return;
-        (_prodLocSets[k] ??= new Set()).add(r.COD_POSU_DESTINO);
-      });
-      d.top_productos.forEach(p => { p.locales_solicitantes = _prodLocSets[p.cod]?.size ?? 0; });
-    }
-    productos = d.top_productos;
+  if (window._rawRows) {
+    const prodRows = _prodAntiFiltro === 'todos'
+      ? rowsForTablas
+      : rowsForTablas.filter(r => r.FLAG_ANTICUAMIENTO === _prodAntiFiltro);
+    productos = computeProductosData(prodRows);
   } else {
-    const grp = {};
-    window._rawRows.filter(r => r.FLAG_ANTICUAMIENTO === _prodAntiFiltro).forEach(r => {
-      const k = r.CODSAPPROD; if (!k) return;
-      (grp[k] ??= { cod:k, nombre:r.DE_PRODUCTO, jq1:r.JQ1, estado:r.ESTADO_PRODUCTO, cantidad:0, costo_total:0, _locSet:new Set() });
-      grp[k].cantidad += r.CA_ENVIADA_ENTERA || 0;
-      grp[k].costo_total += r.COSTO_TOTAL || 0;
-      grp[k]._locSet.add(r.COD_POSU_DESTINO);
-    });
-    productos = Object.values(grp).map(p => ({ ...p, locales_solicitantes: p._locSet.size }));
+    productos = d.top_productos;
   }
   const costoTotalGlobal = d.resumen.costo_total || 1;
   productos.forEach(p => { p.pct_participacion = (p.costo_total / costoTotalGlobal) * 100; });
