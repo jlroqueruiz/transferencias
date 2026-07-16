@@ -109,7 +109,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);font-family:'Segoe UI
 .ct{font-family:'Trebuchet MS',sans-serif;font-size:12px;font-weight:600;color:var(--tx)}
 .cs{font-size:10px;color:var(--tx-d)}
 .ca{position:relative;height:190px}
-.ca-tall{height:230px}
+.ca-tall{height:320px}
 
 /* TABLE */
 .tc2{background:var(--bg-card);border-radius:9px;padding:12px 14px;border:1px solid var(--brd-c);flex-shrink:0;display:flex;flex-direction:column;gap:8px}
@@ -269,7 +269,7 @@ td{padding:7px 10px;text-align:right;white-space:nowrap;color:var(--tx-m)}
           </div>
         </div>
 
-        <div class="cg3b">
+        <div class="cg3b" style="grid-template-columns:1.15fr 1.15fr 0.7fr">
           <div class="cc">
             <div class="ch"><span class="ct">Top Jefe de Venta</span><span class="cs">costo total S/.</span></div>
             <div class="ca ca-tall"><canvas id="cBarJefeVentas"></canvas></div>
@@ -699,40 +699,6 @@ function computeFilteredRows() {
   return rows;
 }
 
-function computeLocalesOrigenData(rows) {
-  const gO = {};
-  for (const r of rows) {
-    const k = r.COD_POSU_ORIGEN ?? '?';
-    if (!gO[k]) gO[k] = { cod:k, nombre:r.DE_LOCAL_ORIGEN, marca:r.MARCA_ORIGEN, depto:r.DEPARTAMENTO_ORIGEN, cantidad:0, costo_total:0 };
-    gO[k].cantidad++;
-    gO[k].costo_total += r.COSTO_TOTAL ?? 0;
-  }
-  return Object.values(gO).sort((a,b) => b.cantidad - a.cantidad);
-}
-
-function computeLocalesDestinoData(rows) {
-  const gDt = {};
-  for (const r of rows) {
-    const k = r.COD_POSU_DESTINO ?? '?';
-    if (!gDt[k]) gDt[k] = { cod:k, nombre:r.DE_LOCAL_DESTINO, marca:r.MARCA_DESTINO ?? r.MARCA_ORIGEN, depto:r.DEPARTAMENTO_DESTINO ?? '', cantidad:0, costo_total:0 };
-    gDt[k].cantidad++;
-    gDt[k].costo_total += r.COSTO_TOTAL ?? 0;
-  }
-  return Object.values(gDt).sort((a,b) => b.cantidad - a.cantidad);
-}
-
-function computeProductosData(rows) {
-  const gP = {};
-  for (const r of rows) {
-    const k = r.CODSAPPROD ?? '?';
-    if (!gP[k]) gP[k] = { cod:k, nombre:r.DE_PRODUCTO, jq1:r.JQ1, estado:r.ESTADO_PRODUCTO, cantidad:0, costo_total:0, _locSet:new Set() };
-    gP[k].cantidad += r.CA_ENVIADA_ENTERA ?? 0;
-    gP[k].costo_total += r.COSTO_TOTAL ?? 0;
-    gP[k]._locSet.add(r.COD_POSU_DESTINO);
-  }
-  return Object.values(gP).map(p => ({ ...p, locales_solicitantes: p._locSet.size }));
-}
-
 function computeRegionData(rows) {
   const grp = {
     'PROVINCIA':   { region: 'PROVINCIA',   cantidad: 0, costo_total: 0, inka: 0, mif: 0, mia: 0 },
@@ -823,7 +789,7 @@ function setJefeVentasFiltro(v) {
 function applyGlobalFilters() {
   renderKpiCards();
   updateChartsForMarca();
-  renderTablas();
+  if (typeof renderTablas === 'function') renderTablas();
   if (typeof renderDetalle === 'function') renderDetalle();
   if (typeof renderAuditores === 'function') renderAuditores();
 }
@@ -1154,7 +1120,7 @@ function rebuildCharts() {
       },
       scales: {
         x: { ticks: { color: isDark?'rgba(242,242,242,.35)':'rgba(17,29,41,.45)', font:{size:9}, callback: v => fmtK(v) }, grid: { color: isDark?'rgba(255,255,255,.04)':'rgba(0,0,0,.05)' } },
-        y: { ticks: { color: isDark?'rgba(242,242,242,.35)':'rgba(17,29,41,.45)', font:{size:9} }, grid: { display: false } }
+        y: { ticks: { color: isDark?'rgba(242,242,242,.35)':'rgba(17,29,41,.45)', font:{size:9}, autoSkip:false }, grid: { display: false } }
       }
     }
   }));
@@ -1169,7 +1135,7 @@ function rebuildCharts() {
       const RLBLS  = ['0–2 días','3–7 días','7–30 días','>30 días'];
       const RCOLORS = ['#148E74','#D7A91D','#FA6F1C','#f06060'];
       const baseRows = window._rawRows
-        ? (currentMarca==='todos' ? window._rawRows : window._rawRows.filter(r=>r.MARCA_ORIGEN===currentMarca))
+        ? (currentMarca==='todos' ? computeFilteredRows() : computeFilteredRows().filter(r=>r.MARCA_ORIGEN===currentMarca))
         : [];
       const costs = RFLAGS.map(f => baseRows.filter(r=>r.FLAG_ANTICUAMIENTO===f).reduce((s,r)=>s+(r.COSTO_TOTAL||0),0));
       return {
@@ -1219,7 +1185,7 @@ function rebuildCharts() {
         { key:'[07-30D]',    label:'7–30 días', col:'#FA6F1C' },
         { key:'[MAYOR 30D]', label:'>30 días',  col:'#f06060' }
       ];
-      const rows2 = currentMarca === 'todos' ? window._rawRows : window._rawRows.filter(r => r.MARCA_ORIGEN === currentMarca);
+      const rows2 = currentMarca === 'todos' ? computeFilteredRows() : computeFilteredRows().filter(r => r.MARCA_ORIGEN === currentMarca);
       legStk.innerHTML = RANGO_DEF.map(rg => {
         const rRows = rows2.filter(r => r.FLAG_ANTICUAMIENTO === rg.key);
         const cant  = rRows.length;
@@ -1252,7 +1218,7 @@ function rebuildCharts() {
       },
       scales: {
         x: { ticks: { color: isDark?'rgba(242,242,242,.35)':'rgba(17,29,41,.45)', font:{size:9}, callback: v => fmtK(v) }, grid: { color: isDark?'rgba(255,255,255,.04)':'rgba(0,0,0,.05)' } },
-        y: { ticks: { color: isDark?'rgba(242,242,242,.35)':'rgba(17,29,41,.45)', font:{size:9} }, grid: { display: false } }
+        y: { ticks: { color: isDark?'rgba(242,242,242,.35)':'rgba(17,29,41,.45)', font:{size:9}, autoSkip:false }, grid: { display: false } }
       }
     }
   }));
@@ -1279,7 +1245,7 @@ function rebuildCharts() {
         plugins: { legend: { display: false }, tooltip: { ...tipConfig(), callbacks: { label: ctx => ' ' + (isCosto ? fmtS(ctx.parsed.x) : fmt.format(ctx.parsed.x) + ' tránsitos') } } },
         scales: {
           x: { type: 'logarithmic', ticks: { color: tc, font:{size:9}, callback: v => { const k = isCosto ? fmtK(v) : (v>=1000?Math.round(v/1000)+'K':v); return [1,2,5,10,20,50,100,200,500,1000,2000,5000,10000,50000,100000,500000,1000000].some(m=>Math.abs(v-m)<v*0.01)?k:null; } }, grid: { color: gc } },
-          y: { ticks: { color: tc, font:{size:9} }, grid: { display: false } }
+          y: { ticks: { color: tc, font:{size:9}, autoSkip:false }, grid: { display: false } }
         }
       }
     });
@@ -1306,7 +1272,7 @@ function rebuildCharts() {
       } } },
       scales: {
         x: { ticks: { color: isDark?'rgba(242,242,242,.35)':'rgba(17,29,41,.45)', font:{size:9}, callback: v => fmtK(v) }, grid: { color: isDark?'rgba(255,255,255,.04)':'rgba(0,0,0,.05)' }, beginAtZero: true },
-        y: { ticks: { color: isDark?'rgba(242,242,242,.35)':'rgba(17,29,41,.45)', font:{size:9} }, grid: { display: false } }
+        y: { ticks: { color: isDark?'rgba(242,242,242,.35)':'rgba(17,29,41,.45)', font:{size:9}, autoSkip:false }, grid: { display: false } }
       }
     }
   }));
@@ -1360,13 +1326,29 @@ function sortArr(arr, s) {
 
 function renderTablas() {
   const d = window._data; if (!d) return;
+  const raw = computeFilteredRows();
 
-  const rowsForTablas = window._rawRows ? computeFilteredRows() : null;
-  const origenBase  = rowsForTablas ? computeLocalesOrigenData(rowsForTablas)  : d.top_locales_origen;
-  const destinoBase = rowsForTablas ? computeLocalesDestinoData(rowsForTablas) : d.top_locales_destino;
+  let locales, destinos;
+  if (window._rawRows) {
+    const buildGroup = (codField, nameField, deptoField, marcaField) => {
+      const grp = {};
+      raw.forEach(r => {
+        const k = r[codField]; if (!k) return;
+        (grp[k] ??= { cod:k, nombre:r[nameField], marca:r[marcaField], depto:r[deptoField], cantidad:0, costo_total:0 });
+        grp[k].cantidad++;
+        grp[k].costo_total += r.COSTO_TOTAL || 0;
+      });
+      return Object.values(grp);
+    };
+    locales  = buildGroup('COD_POSU_ORIGEN','DE_LOCAL_ORIGEN','DEPARTAMENTO_ORIGEN','MARCA_ORIGEN');
+    destinos = buildGroup('COD_POSU_DESTINO','DE_LOCAL_DESTINO','DEPARTAMENTO_DESTINO','MARCA_DESTINO');
+  } else {
+    locales = d.top_locales_origen;
+    destinos = d.top_locales_destino;
+  }
 
-  const locFilt  = currentMarca === 'todos' ? origenBase  : origenBase.filter(l => l.marca === currentMarca);
-  const destFilt = currentMarca === 'todos' ? destinoBase : destinoBase.filter(l => l.marca === currentMarca);
+  const locFilt  = currentMarca === 'todos' ? locales  : locales.filter(l => l.marca === currentMarca);
+  const destFilt = currentMarca === 'todos' ? destinos : destinos.filter(l => l.marca === currentMarca);
 
   const rowLocal = (tipo) => (l, i) => `<tr style="background:${i%2===0?'transparent':'rgba(0,0,0,.02)'}">
     <td class="tdl" style="color:var(--tx-d);font-size:10px">${l.cod}</td>
@@ -1381,13 +1363,23 @@ function renderTablas() {
   document.getElementById('tbody-destino').innerHTML = sortArr(destFilt, _sortDestino).map(rowLocal('destino')).join('');
 
   let productos;
-  if (window._rawRows) {
-    const prodRows = _prodAntiFiltro === 'todos'
-      ? rowsForTablas
-      : rowsForTablas.filter(r => r.FLAG_ANTICUAMIENTO === _prodAntiFiltro);
-    productos = computeProductosData(prodRows);
-  } else {
-    productos = d.top_productos;
+  {
+    const baseRows = window._rawRows
+      ? (_prodAntiFiltro === 'todos' ? raw : raw.filter(r => r.FLAG_ANTICUAMIENTO === _prodAntiFiltro))
+      : [];
+    if (window._rawRows) {
+      const grp = {};
+      baseRows.forEach(r => {
+        const k = r.CODSAPPROD; if (!k) return;
+        (grp[k] ??= { cod:k, nombre:r.DE_PRODUCTO, jq1:r.JQ1, estado:r.ESTADO_PRODUCTO, cantidad:0, costo_total:0, _locSet:new Set() });
+        grp[k].cantidad += r.CA_ENVIADA_ENTERA || 0;
+        grp[k].costo_total += r.COSTO_TOTAL || 0;
+        grp[k]._locSet.add(r.COD_POSU_DESTINO);
+      });
+      productos = Object.values(grp).map(p => ({ ...p, locales_solicitantes: p._locSet.size }));
+    } else {
+      productos = d.top_productos;
+    }
   }
   const costoTotalGlobal = d.resumen.costo_total || 1;
   productos.forEach(p => { p.pct_participacion = (p.costo_total / costoTotalGlobal) * 100; });
@@ -1424,7 +1416,7 @@ function openLocalDetail(cod, tipo) {
   const deptoField= isOrigen ? 'DEPARTAMENTO_ORIGEN': 'DEPARTAMENTO_DESTINO';
   const marcaField= isOrigen ? 'MARCA_ORIGEN'      : 'MARCA_DESTINO';
 
-  const rows = window._rawRows.filter(r => String(r[codField]) === String(cod));
+  const rows = computeFilteredRows().filter(r => String(r[codField]) === String(cod));
   if (!rows.length) return;
 
   const nombre = rows[0][nameField] ?? cod;
@@ -1479,13 +1471,23 @@ function setTab(name, el) {
 }
 
 // ── Detalle filtros ─────────────────────────────────────────────────────────
-let _dFiltAnti = 'todos', _dFiltMarca = 'todos';
+let _dFiltAnti = new Set(), _dFiltMarca = 'todos';
+const DFANTI_IDS = {'[0-2D]':'df-anti-02','[03-07D]':'df-anti-37','[07-30D]':'df-anti-730','[MAYOR 30D]':'df-anti-30p'};
 
 function setDetalleFilter(tipo, val, btn) {
   if (tipo === 'anti') {
-    _dFiltAnti = val;
-    document.querySelectorAll('[id^="df-anti-"]').forEach(b => b.classList.remove('a-all','a-inka','a-mif'));
-    btn.classList.add('a-all');
+    if (val === 'todos') {
+      _dFiltAnti.clear();
+    } else if (_dFiltAnti.has(val)) {
+      _dFiltAnti.delete(val);
+    } else {
+      _dFiltAnti.add(val);
+    }
+    document.getElementById('df-anti-all').classList.toggle('a-all', _dFiltAnti.size === 0);
+    Object.entries(DFANTI_IDS).forEach(([flag, id]) => {
+      const b = document.getElementById(id);
+      if (b) b.classList.toggle('a-all', _dFiltAnti.has(flag));
+    });
   } else {
     _dFiltMarca = val;
     document.querySelectorAll('[id^="df-marca-"]').forEach(b => b.classList.remove('a-all','a-inka','a-mif','a-mia'));
@@ -1522,7 +1524,7 @@ function renderDetalle() {
   const qOrig = (document.getElementById('df-search-orig')?.value ?? '').toLowerCase().trim();
   const FLAG_LABEL = {'[0-2D]':'0–2 días','[03-07D]':'3–7 días','[07-30D]':'7–30 días','[MAYOR 30D]':'>30 días'};
   const rows = computeFilteredRows().filter(r => {
-    if (_dFiltAnti  !== 'todos' && r.FLAG_ANTICUAMIENTO !== _dFiltAnti) return false;
+    if (_dFiltAnti.size > 0 && !_dFiltAnti.has(r.FLAG_ANTICUAMIENTO)) return false;
     if (_dFiltMarca !== 'todos' && r.MARCA_ORIGEN      !== _dFiltMarca) return false;
     if (qProd) {
       const hay = `${r.CODSAPPROD} ${r.DE_PRODUCTO}`.toLowerCase();
@@ -1612,7 +1614,7 @@ function openProductoDetail(cod) {
     alert('Detalle disponible solo con datos en tiempo real.');
     return;
   }
-  const rows = window._rawRows.filter(r => String(r.CODSAPPROD) === String(cod));
+  const rows = computeFilteredRows().filter(r => String(r.CODSAPPROD) === String(cod));
   if (!rows.length) return;
 
   const nombre = rows[0].DE_PRODUCTO ?? cod;
